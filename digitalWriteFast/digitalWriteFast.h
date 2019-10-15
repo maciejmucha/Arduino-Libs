@@ -40,7 +40,10 @@
 
 
 // workarounds for ARM microcontrollers
-#if (!defined(__AVR__) || defined(ARDUINO_ARCH_SAM))
+#if (!defined(__AVR__) || \
+     defined(ARDUINO_ARCH_SAM) || \
+     defined(ARDUINO_ARCH_SAMD))
+
 #ifndef PROGMEM
 # define PROGMEM
 #endif
@@ -103,8 +106,9 @@
 #define SPI_SW_SCK_PIN  (13) //SCK on Uno (for software SPI)
 
 
-// --- Arduino Due ---
-#if (defined(ARDUINO_SAM_DUE) || defined(__SAM3X8E__))
+// --- Arduino Due and SAM3X8E based boards ---
+#if (defined(ARDUINO_SAM_DUE) || \
+     defined(__SAM3X8E__))
 
 #define UART_RX_PIN     (0)
 #define UART_TX_PIN     (1)
@@ -118,8 +122,9 @@
 #define SPI_HW_SCK_PIN  (76) //76
 
 
-// --- Arduino Zero ---
-#elif (defined(ARDUINO_SAM_ZERO) || defined(__SAMD21G18A__))
+// --- Arduino Zero and SAMD21G18 based boards ---
+#elif (defined(ARDUINO_SAMD_ZERO) || \
+       defined(__SAMD21G18A__))
 
 #define UART_RX_PIN     (0)
 #define UART_TX_PIN     (1)
@@ -133,7 +138,7 @@
 #define SPI_HW_SCK_PIN  (20) //20
 
 
-// --- Arduino Mega ---
+// --- Arduino Mega and ATmega128x/256x based boards ---
 #elif (defined(ARDUINO_AVR_MEGA) || \
        defined(ARDUINO_AVR_MEGA1280) || \
        defined(ARDUINO_AVR_MEGA2560) || \
@@ -232,7 +237,7 @@
 (((P) >= 0 && (P) <= 7) ? (P) : (((P) >= 8 && (P) <= 15) ? (P) - 8 : (((P) >= 16 && (P) <= 23) ? (P) - 16 : (P) - 24)))
 
 
-// --- Arduino Leonardo ---
+// --- Arduino Leonardo and ATmega16U4/32U4 based boards ---
 #elif (defined(ARDUINO_AVR_LEONARDO) || \
        defined(__AVR_ATmega16U4__) || \
        defined(__AVR_ATmega32U4__))
@@ -258,9 +263,12 @@
 (((P) >= 8 && (P) <= 11) ? (P) - 4 : (((P) >= 18 && (P) <= 21) ? 25 - (P) : (((P) == 0) ? 2 : (((P) == 1) ? 3 : (((P) == 2) ? 1 : (((P) == 3) ? 0 : (((P) == 4) ? 4 : (((P) == 6) ? 7 : (((P) == 13) ? 7 : (((P) == 14) ? 3 : (((P) == 15) ? 1 : (((P) == 16) ? 2 : (((P) == 17) ? 0 : (((P) == 22) ? 1 : (((P) == 23) ? 0 : (((P) == 24) ? 4 : (((P) == 25) ? 7 : (((P) == 26) ? 4 : (((P) == 27) ? 5 : 6 )))))))))))))))))))
 
 
-// --- Arduino Uno ---
+// --- Arduino Uno and ATmega168/328 based boards ---
 #elif (defined(ARDUINO_AVR_UNO) || \
        defined(ARDUINO_AVR_DUEMILANOVE) || \
+       defined(__AVR_ATmega168__) || \
+       defined(__AVR_ATmega168A__) || \
+       defined(__AVR_ATmega168PA__) || \
        defined(__AVR_ATmega328__) || \
        defined(__AVR_ATmega328P__) || \
        defined(__AVR_ATmega328PB__))
@@ -296,6 +304,23 @@
 (((P) >= 0 && (P) <= 7) ? (P) : (((P) >= 8 && (P) <= 13) ? (P) - 8 : (P) - 14))
 #endif
 
+// --- ATtinyX5 ---
+#elif defined(__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__)
+// we have only PORTB
+#define __digitalPinToPortReg(P) (&PORTB)
+#define __digitalPinToDDRReg(P)  (&DDRB)
+#define __digitalPinToPINReg(P)  (&PINB)
+#define __digitalPinToBit(P) \
+(((P) >= 0 && (P) <= 7) ? (P) : (((P) >= 8 && (P) <= 13) ? (P) - 8 : (P) - 14))
+
+// --- ATtinyX4 + ATtinyX7 ---
+//  ATtinyX4: PORTA for 0 to 7, PORTB for 8 to 11
+//  ATtinyX7: PORTA for 0 to 7, PORTB for 8 to 15
+#elif  defined(__AVR_ATtiny24__) || defined(__AVR_ATtiny44__) || defined(__AVR_ATtiny84__) || defined(__AVR_ATtiny87__) || defined(__AVR_ATtiny167__)
+#define __digitalPinToPortReg(P) (((P) >= 0 && (P) <= 7) ? &PORTA : &PORTB)
+#define __digitalPinToDDRReg(P)  (((P) >= 0 && (P) <= 7) ? &DDRA : &DDRB)
+#define __digitalPinToPINReg(P)  (((P) >= 0 && (P) <= 7) ? &PINA : &PINB)
+#define __digitalPinToBit(P)     (((P) >= 0 && (P) <= 7) ? (P) : (P) - 8 )
 
 // --- Other ---
 #else
@@ -331,7 +356,12 @@ if (__builtin_constant_p(P) && __builtin_constant_p(V)) { \
 #if (defined(__AVR__) || defined(ARDUINO_ARCH_AVR))
 #define pinModeFast(P, V) \
 if (__builtin_constant_p(P) && __builtin_constant_p(V)) { \
-  BIT_WRITE(*__digitalPinToDDRReg(P), __digitalPinToBit(P), (V)); \
+  if (V == INPUT_PULLUP) {\
+    BIT_WRITE(*__digitalPinToDDRReg(P), __digitalPinToBit(P), (INPUT)); \
+    BIT_WRITE(*__digitalPinToPortReg(P), __digitalPinToBit(P), (HIGH)); \
+  } else { \
+    BIT_WRITE(*__digitalPinToDDRReg(P), __digitalPinToBit(P), (V)); \
+  } \
 } else { \
   pinMode((P), (V)); \
 }
@@ -346,11 +376,19 @@ if (__builtin_constant_p(P) && __builtin_constant_p(V)) { \
 #define digitalReadFast(P) ( (int) __digitalReadFast((P)) )
 #define __digitalReadFast(P ) \
   (__builtin_constant_p(P) ) ? ( \
-  ( BIT_READ(*__digitalPinToPINReg(P), __digitalPinToBit(P))) ) : \
+  ( BIT_READ(*__digitalPinToPINReg(P), __digitalPinToBit(P))) ? HIGH:LOW ) : \
   digitalRead((P))
 #else
 #define digitalReadFast digitalRead
 #endif
 #endif
+
+
+#ifndef digitalToggleFast
+#if (defined(__AVR__) || defined(ARDUINO_ARCH_AVR))
+#define digitalToggleFast(P) BIT_SET(*__digitalPinToPINReg(P), __digitalPinToBit(P))
+#endif
+#endif
+
 
 #endif //__digitalWriteFast_h_
